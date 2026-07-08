@@ -26,6 +26,7 @@ class ToolContext:
     approval_callback: Callable[[dict[str, Any]], Awaitable[ToolDecision] | ToolDecision] | None = (
         None
     )
+    skill_context_buffer: Any | None = None
 
 
 @dataclass(slots=True)

@@ -38,7 +38,9 @@ This file tracks the Python port against the existing Java and TypeScript implem
   - OpenAI-compatible streaming LLM client
   - DeepSeek default
   - ReAct loop with text/thinking/tool-call/tool-result/done events
-  - SDK entrypoint
+  - Plan-and-Execute agent with Planner-generated DAG, dependency ordering, and parallel executable batches
+  - Multi-Agent orchestrator with Planner, Worker, Reviewer, dependency scheduling, parallel workers, review approval parsing, and bounded retry
+  - SDK entrypoint with ReAct, Plan-and-Execute, and Multi-Agent methods
   - pre/post side-history snapshots around Agent runs
 - Configuration:
   - defaults
@@ -70,8 +72,11 @@ This file tracks the Python port against the existing Java and TypeScript implem
   - SQLite long-term memory
   - project memory files `PAI.md`, `.paicli/PAI.md`, local variants
 - Skills:
+  - built-in/user/project skill layers
   - user/project `.paicli/skills/*/SKILL.md`
-  - `load_skill`
+  - `~/.paicli/skills.json` disabled-state store
+  - `load_skill` with one-shot SkillContextBuffer injection
+  - `/skill list/show/on/off/reload`
 - RAG:
   - SQLite local code index
   - `/index`
@@ -136,7 +141,7 @@ The Java implementation has a WeChat iLink channel. Python does not ship that pr
 ```bash
 uv run --extra dev ruff check .
 uv run --extra dev ruff format --check .
-uv run --extra dev pytest
+uv run --extra dev python -m pytest
 uv build
 uv run paicli --help
 uv run paicli doctor --cwd .

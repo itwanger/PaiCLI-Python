@@ -23,15 +23,22 @@ async def query(
     cwd: str,
     config: PaiCliConfig,
     approval_callback=None,
+    skill_context_buffer=None,
     max_turns: int = 20,
 ) -> AsyncIterator[dict[str, Any]]:
+    user_message = _prepend_skill_context(user_message, skill_context_buffer)
     messages = [
         *(history or []),
         Message(role="user", content=parse_image_references(user_message, cwd)),
     ]
     tool_definitions = tool_registry.definitions()
     executor = ToolExecutor(tool_registry)
-    context = ToolContext(cwd=cwd, config=config, approval_callback=approval_callback)
+    context = ToolContext(
+        cwd=cwd,
+        config=config,
+        approval_callback=approval_callback,
+        skill_context_buffer=skill_context_buffer,
+    )
 
     total_tokens = 0
     turn = 0
@@ -151,3 +158,12 @@ def _tool_name_by_id(calls: list[dict[str, Any]], tool_call_id: str) -> str:
         if call.get("id") == tool_call_id:
             return str(call.get("function", {}).get("name") or "unknown")
     return "unknown"
+
+
+def _prepend_skill_context(user_message: str, skill_context_buffer) -> str:
+    if not skill_context_buffer or skill_context_buffer.is_empty():
+        return user_message
+    drained = skill_context_buffer.drain()
+    if not drained:
+        return user_message
+    return f"{drained}\n\n---\nUser request:\n{user_message}"

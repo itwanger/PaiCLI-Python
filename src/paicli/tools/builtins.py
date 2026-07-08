@@ -379,10 +379,16 @@ async def save_memory(payload: dict[str, Any], context: ToolContext) -> ToolResu
 async def load_skill(payload: dict[str, Any], context: ToolContext) -> ToolResult:
     skill = SkillRegistry(context.cwd).load(str(payload["name"]))
     if not skill:
-        return ToolResult(f'Skill "{payload["name"]}" not found.', is_error=True)
-    content = skill.content
-    if len(content) > 12_000:
-        content = content[:12_000] + "\n... [truncated]"
+        return ToolResult(f'Skill "{payload["name"]}" not found or disabled.', is_error=True)
+    content = skill.body or skill.content
+    if len(content) > 5_000:
+        content = content[:5_000] + "\n... [truncated; use /skill show for the full skill]"
+    if context.skill_context_buffer:
+        context.skill_context_buffer.push(skill.name, content)
+        return ToolResult(
+            f'Loaded skill "{skill.name}" instructions for the next model turn.',
+            display_summary=f"Loaded skill {skill.name}",
+        )
     return ToolResult(content, display_summary=f"Loaded skill {skill.name}")
 
 

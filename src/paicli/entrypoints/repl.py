@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from paicli import __version__
-from paicli.agent import Agent
+from paicli.agent import Agent, AgentOrchestrator, PlanExecuteAgent
 from paicli.bootstrap import build_tool_registry
 from paicli.config import PaiCliConfig, config_to_public_dict
 from paicli.llm import create_llm_client
@@ -142,10 +142,14 @@ async def start_repl(cwd: str, config: PaiCliConfig) -> None:
 
 
 async def _run_agent(agent: Agent, renderer: RichRenderer, message: str) -> None:
-    renderer.set_context_window(agent.llm_client.max_context_window)
+    await _run_events(agent.run(message), renderer, agent.llm_client.max_context_window)
+
+
+async def _run_events(events, renderer: RichRenderer, context_window: int | None = None) -> None:
+    renderer.set_context_window(context_window)
     renderer.start_run()
     renderer.newline()
-    async for event in agent.run(message):
+    async for event in events:
         renderer.handle(event)
         if event.get("type") == "error":
             break
@@ -213,20 +217,33 @@ async def _handle_slash(
         if not arg:
             console.print("[red]Usage:[/red] /plan <task>")
         else:
-            await _run_agent(
-                agent,
+            plan_agent = PlanExecuteAgent(
+                llm_client=agent.llm_client,
+                tool_registry=registry,
+                config=config,
+                cwd=cwd,
+                approval_callback=agent.approval_callback,
+            )
+            await _run_events(
+                plan_agent.run(arg),
                 RichRenderer(),
-                "Plan the task, show the plan briefly, then execute it step by step:\n" + arg,
+                agent.llm_client.max_context_window,
             )
     elif command == "/team":
         if not arg:
             console.print("[red]Usage:[/red] /team <task>")
         else:
-            await _run_agent(
-                agent,
+            orchestrator = AgentOrchestrator(
+                llm_client=agent.llm_client,
+                tool_registry=registry,
+                config=config,
+                cwd=cwd,
+                approval_callback=agent.approval_callback,
+            )
+            await _run_events(
+                orchestrator.run(arg),
                 RichRenderer(),
-                "Act as planner, worker, and reviewer. "
-                "Execute this task and review the result:\n" + arg,
+                agent.llm_client.max_context_window,
             )
     elif command == "/model":
         _model_command(arg, console, config)
@@ -298,8 +315,22 @@ def _skill_command(arg: str, console: Console, cwd: str) -> None:
             return
         console.print(skill.content[:12_000])
         return
-    rows = registry.list()
-    console.print("\n".join(f"{item.name}: {item.description}" for item in rows) or "(no skills)")
+    if sub == "on" and rest:
+        console.print("enabled" if registry.enable(rest.strip()) else "skill not found")
+        return
+    if sub == "off" and rest:
+        console.print("disabled" if registry.disable(rest.strip()) else "skill not found")
+        return
+    if sub == "reload":
+        registry.reload()
+        console.print("skills reloaded")
+        return
+    rows = registry.all_skills()
+    lines = [
+        f"{item.name}\t{item.source}\t{'on' if item.enabled else 'off'}\t{item.description}"
+        for item in rows
+    ]
+    console.print("\n".join(lines) or "(no skills)")
 
 
 def _task_command(arg: str, console: Console) -> None:

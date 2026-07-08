@@ -6,6 +6,7 @@ from typing import Any
 
 from paicli.config import PaiCliConfig
 from paicli.llm.base import LlmClient
+from paicli.skill import SkillContextBuffer
 from paicli.snapshot import SnapshotService
 from paicli.tools.registry import ToolRegistry
 from paicli.types import Message, QueryResult
@@ -33,6 +34,7 @@ class Agent:
         self.approval_callback = approval_callback
         self.max_turns = max_turns
         self.history: list[Message] = []
+        self.skill_context_buffer = SkillContextBuffer()
 
     async def run(self, message: str) -> AsyncIterator[dict[str, Any]]:
         snapshot = SnapshotService(self.cwd)
@@ -48,6 +50,7 @@ class Agent:
                 cwd=self.cwd,
                 config=self.config,
                 approval_callback=self.approval_callback,
+                skill_context_buffer=self.skill_context_buffer,
                 max_turns=self.max_turns,
             ):
                 if event.get("type") == "done":
@@ -73,3 +76,4 @@ class Agent:
 
     def clear_history(self) -> None:
         self.history = []
+        self.skill_context_buffer.clear()
