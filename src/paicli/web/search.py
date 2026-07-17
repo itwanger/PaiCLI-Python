@@ -52,3 +52,28 @@ def _normalize_duckduckgo_url(url: str) -> str:
     if "uddg" in params and params["uddg"]:
         return unquote(params["uddg"][0])
     return url
+
+
+async def tavily_search_web(
+    query: str, api_key: str, max_results: int = 5
+) -> list[SearchResult]:
+    try:
+        from tavily import AsyncTavilyClient  # noqa: PLC0415
+    except ImportError as exc:
+        raise ImportError(
+            "tavily-python is required for Tavily search. "
+            "Install it with: pip install paicli-python[search]"
+        ) from exc
+
+    client = AsyncTavilyClient(api_key=api_key)
+    response = await client.search(query=query, max_results=max_results)
+    results: list[SearchResult] = []
+    for item in response.get("results", []):
+        results.append(
+            SearchResult(
+                title=item.get("title", ""),
+                url=item.get("url", ""),
+                snippet=item.get("content", ""),
+            )
+        )
+    return results
