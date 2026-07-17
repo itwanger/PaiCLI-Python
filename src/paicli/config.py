@@ -243,6 +243,10 @@ def _apply_env(data: dict[str, Any], env: dict[str, str | None]) -> dict[str, An
     if hitl in {"always", "auto", "never"}:
         policy["hitl_mode"] = hitl
 
+    tavily_key = env.get("TAVILY_API_KEY")
+    if tavily_key:
+        os.environ.setdefault("TAVILY_API_KEY", tavily_key)
+
     return result
 
 

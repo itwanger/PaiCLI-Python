@@ -15,6 +15,7 @@ from paicli.skill import SkillRegistry
 from paicli.snapshot import SnapshotService
 from paicli.tools.base import Tool, ToolContext, ToolResult, object_schema
 from paicli.web import fetch_url, search_web
+from paicli.web.search import tavily_search_web
 
 
 def get_builtin_tools() -> list[Tool]:
@@ -346,8 +347,14 @@ async def bash(payload: dict[str, Any], context: ToolContext) -> ToolResult:
 
 async def web_search(payload: dict[str, Any], _context: ToolContext) -> ToolResult:
     max_results = int(payload.get("max_results") or payload.get("maxResults") or 5)
+    tavily_key = os.environ.get("TAVILY_API_KEY")
     try:
-        results = await search_web(str(payload["query"]), max_results=max_results)
+        if tavily_key:
+            results = await tavily_search_web(
+                str(payload["query"]), api_key=tavily_key, max_results=max_results
+            )
+        else:
+            results = await search_web(str(payload["query"]), max_results=max_results)
     except Exception as exc:  # noqa: BLE001
         return ToolResult(f"Search error: {exc}", is_error=True)
     if not results:
