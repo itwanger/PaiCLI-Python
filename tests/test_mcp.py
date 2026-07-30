@@ -23,6 +23,26 @@ def test_mcp_tools_list(tmp_path, monkeypatch):
     assert any(tool["name"] == "read_file" for tool in tools)
     assert any(tool["name"] == "execute_command" for tool in tools)
 
+def test_mcp_initialize_returns_protocol_details(tmp_path):
+    async def run():
+        return await _handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-11-25",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test-client", "version": "1.0"},
+                },
+            },
+            str(tmp_path),
+        )
+
+    response = asyncio.run(run())
+    assert response["result"]["protocolVersion"]
+    assert response["result"]["capabilities"] == {"tools": {}}
+    assert response["result"]["serverInfo"] == {"name": "paicli", "version": "0.1.0"}
 
 def test_mcp_client_registers_and_calls_stdio_tool(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
