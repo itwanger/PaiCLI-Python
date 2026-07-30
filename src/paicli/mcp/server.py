@@ -30,6 +30,12 @@ def _tool_list(registry: ToolRegistry) -> list[dict[str, Any]]:
         )
     return tools
 
+def _initialize_result() -> dict[str, Any]:
+    return {
+        "protocolVersion": "2025-11-25",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "paicli", "version": "0.1.0"},
+    }
 
 async def _handle_request(request: dict[str, Any], cwd: str) -> dict[str, Any]:
     registry = _build_registry()
@@ -37,7 +43,7 @@ async def _handle_request(request: dict[str, Any], cwd: str) -> dict[str, Any]:
     method = request.get("method")
     params = request.get("params") or {}
     if method in {"initialize", "notifications/initialized"}:
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"serverInfo": {"name": "paicli"}}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": _initialize_result()}
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": _tool_list(registry)}}
     if method == "tools/call":
