@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "parallel-search": {
+      "type": "streamable_http",
+      "url": "https://search.parallel.ai/mcp",
+      "headers": {
+        "User-Agent": "PaiCLI-Python/0.1.0"
+      },
+      "enabled": true,
+      "timeout": 30
+    }
+  }
+}
