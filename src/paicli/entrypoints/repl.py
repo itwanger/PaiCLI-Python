@@ -126,6 +126,11 @@ async def start_repl(cwd: str, config: PaiCliConfig) -> None:
         agents_files=agents_file_count,
         hitl_mode=config.policy.hitl_mode,
     )
+    if mcp_manager:
+        for name, error in mcp_manager.last_errors.items():
+            console.print(
+                f"MCP server {name} failed to load: {error}", style="yellow", markup=False
+            )
     agent = Agent(
         llm_client=client,
         tool_registry=registry,
@@ -655,7 +660,11 @@ def _approval_prompt(
 def _count_mcp_servers(manager: Any) -> int:
     if manager is None:
         return 0
-    return sum(1 for spec in manager.specs.values() if spec.enabled)
+    return sum(
+        1
+        for spec in manager.specs.values()
+        if spec.enabled and spec.name not in manager.last_errors
+    )
 
 
 def _count_named_files(root: str, filename: str) -> int:

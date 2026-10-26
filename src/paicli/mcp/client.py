@@ -7,10 +7,12 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
-from pydantic import AnyUrl
+from mcp.client.streamable_http import streamable_http_client
+from mcp.types import JSONRPCMessage
+from pydantic import AnyUrl, ValidationError
 
 from paicli.mcp.config import McpServerSpec, load_mcp_server_specs
 from paicli.tools.base import Tool, ToolContext, ToolResult, object_schema
@@ -33,7 +35,7 @@ class McpClientManager:
                 tools.extend(self._virtual_resource_tools(spec))
                 tools.extend(self._virtual_prompt_tools(spec))
             except Exception as exc:  # noqa: BLE001 - keep broken MCP servers isolated
-                self.last_errors[spec.name] = str(exc)
+                self.last_errors[spec.name] = _error_summary(exc)
         return tools
 
     async def list_server_tools(self, spec: McpServerSpec) -> list[Any]:
@@ -212,17 +214,57 @@ class McpClientManager:
             if not spec.url:
                 raise ValueError(f"MCP server {spec.name} is missing url")
             async with (
-                streamablehttp_client(
-                    spec.url,
+                httpx.AsyncClient(
                     headers=spec.headers or None,
-                    timeout=spec.timeout,
+                    timeout=httpx.Timeout(spec.timeout, read=spec.timeout),
+                    follow_redirects=True,
+                    event_hooks={"response": [_validate_http_response]},
+                ) as http_client,
+                streamable_http_client(
+                    spec.url,
+                    http_client=http_client,
                 ) as (read, write, _session_id),
-                ClientSession(read, write) as session,
+                ClientSession(
+                    read,
+                    write,
+                    read_timeout_seconds=timedelta(seconds=spec.timeout),
+                ) as session,
             ):
                 await session.initialize()
                 yield session
             return
         raise ValueError(f"Unsupported MCP transport: {spec.type}")
+
+
+async def _validate_http_response(response: httpx.Response) -> None:
+    """Reject non-MCP JSON before the SDK logs a traceback with the raw payload."""
+    if response.request.method != "POST" or not response.is_success:
+        return
+    if not response.headers.get("content-type", "").lower().startswith("application/json"):
+        return
+    content = await response.aread()
+    # Notifications commonly return an empty 202 response.
+    if not content and response.status_code in {202, 204}:
+        return
+    try:
+        JSONRPCMessage.model_validate_json(content)
+    except ValidationError:
+        detail = ""
+        try:
+            payload = json.loads(content)
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and isinstance(payload.get("code"), int):
+            detail = f" (service code {payload['code']})"
+        raise ValueError(
+            f"Server returned invalid MCP JSON-RPC{detail}; check the MCP URL and credentials."
+        ) from None
+
+
+def _error_summary(exc: BaseException) -> str:
+    if isinstance(exc, BaseExceptionGroup):
+        return "; ".join(dict.fromkeys(_error_summary(child) for child in exc.exceptions))
+    return str(exc) or type(exc).__name__
 
 
 def _content_to_text(content: Any) -> str:

@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 
+import httpx
+import pytest
+
 from paicli.config import load_config
+from paicli.entrypoints.repl import _count_mcp_servers
 from paicli.mcp import McpClientManager
 from paicli.mcp.server import _handle_request
 from paicli.tools.base import ToolContext
@@ -120,3 +124,81 @@ if __name__ == "__main__":
     assert any(tool.name == "mcp__noisy__echo" for tool in tools)
     captured = capsys.readouterr()
     assert "NOISY_MCP_STARTUP" not in captured.err
+
+
+@pytest.mark.parametrize(
+    "bad_response",
+    [
+        {"code": 1000, "msg": "身份验证失败。", "success": False, "secret": "PRIVATE"},
+        {"unexpected": "PRIVATE"},
+        "invalid JSON PRIVATE",
+    ],
+)
+def test_http_error_is_concise_and_other_servers_still_load(
+    tmp_path,
+    monkeypatch,
+    caplog,
+    bad_response,
+):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / ".paicli").mkdir()
+    (tmp_path / ".paicli" / "mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "bad": {"url": "https://mcp.test/bad", "timeout": 1},
+                    "good": {"url": "https://mcp.test/good", "timeout": 1},
+                },
+            }
+        )
+    )
+
+    def respond(request):
+        if request.url.path == "/bad":
+            if isinstance(bad_response, str):
+                return httpx.Response(
+                    200,
+                    text=bad_response,
+                    headers={"content-type": "application/json"},
+                )
+            return httpx.Response(200, json=bad_response)
+        if request.method != "POST":
+            return httpx.Response(405)
+        message = json.loads(request.content)
+        if "id" not in message:
+            return httpx.Response(202, headers={"content-type": "application/json"})
+        if message["method"] == "initialize":
+            result = {
+                "protocolVersion": message["params"]["protocolVersion"],
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "good", "version": "1"},
+            }
+        else:
+            assert message["method"] == "tools/list"
+            result = {"tools": [{"name": "echo", "inputSchema": {"type": "object"}}]}
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": message["id"], "result": result})
+
+    original_client = httpx.AsyncClient
+
+    def mock_client(**kwargs):
+        return original_client(**kwargs, transport=httpx.MockTransport(respond))
+
+    monkeypatch.setattr("paicli.mcp.client.httpx.AsyncClient", mock_client)
+
+    async def run():
+        manager = McpClientManager(tmp_path)
+        tools = await manager.load_tools()
+        return manager, tools
+
+    manager, tools = asyncio.run(run())
+    assert any(tool.name == "mcp__good__echo" for tool in tools)
+    assert not any(tool.name.startswith("mcp__bad__") for tool in tools)
+    assert set(manager.last_errors) == {"bad"}
+    error = manager.last_errors["bad"]
+    assert "check the MCP URL and credentials" in error
+    if isinstance(bad_response, dict) and "code" in bad_response:
+        assert "1000" in error
+    assert "PRIVATE" not in error
+    assert "PRIVATE" not in caplog.text
+    assert "Error parsing JSON response" not in caplog.text
+    assert _count_mcp_servers(manager) == 1
