@@ -101,6 +101,7 @@ This file tracks the Python port against the existing Java and TypeScript implem
   - official MCP Python SDK client
   - stdio MCP server connection
   - Streamable HTTP MCP server connection
+  - opt-in [Parallel Search MCP configuration example](../examples/parallel-search/README.md)
   - dynamic `mcp__server__tool` registration
   - virtual resource tools
   - virtual prompt tools

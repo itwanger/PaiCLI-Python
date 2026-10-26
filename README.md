@@ -298,6 +298,9 @@ uv run paicli mcp init-chrome \
   --browser-url http://127.0.0.1:9222
 ```
 
+可选的免费、免 Key 联网搜索配置见 [Parallel Search MCP 示例](examples/parallel-search/README.md)。
+该示例使用已有的 Streamable HTTP client，不改变内置 DuckDuckGo 搜索或默认模型配置。
+
 查看已配置的 MCP server：
 
 ```bash
